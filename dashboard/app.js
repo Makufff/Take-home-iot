@@ -38,6 +38,25 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
+const tooltipEl = document.createElement("div");
+tooltipEl.className = "tooltip";
+document.body.appendChild(tooltipEl);
+
+function showTooltip({ chart, tooltip }, unit) {
+  if (tooltip.opacity === 0 || !tooltip.dataPoints?.length) {
+    tooltipEl.classList.remove("show");
+    return;
+  }
+  const { x, y } = tooltip.dataPoints[0].parsed;
+  const value = Number.isInteger(y) ? y : y.toFixed(1);
+  tooltipEl.innerHTML = `<b>${value} <small>${unit}</small></b><span>${new Date(x).toLocaleTimeString()}</span>`;
+  const rect = chart.canvas.getBoundingClientRect();
+  const left = Math.min(Math.max(rect.left + tooltip.caretX, 60), window.innerWidth - 60);
+  tooltipEl.style.left = `${left}px`;
+  tooltipEl.style.top = `${rect.top + tooltip.caretY}px`;
+  tooltipEl.classList.add("show");
+}
+
 function sparkline(canvasId, colorVar, unit) {
   const color = cssVar(colorVar);
   const ctx = $(canvasId).getContext("2d");
@@ -70,13 +89,8 @@ function sparkline(canvasId, colorVar, unit) {
       interaction: { mode: "nearest", intersect: false },
       plugins: {
         legend: { display: false },
-        tooltip: {
-          displayColors: false,
-          callbacks: {
-            title: (items) => new Date(items[0].parsed.x).toLocaleTimeString(),
-            label: (item) => `${item.parsed.y} ${unit}`,
-          },
-        },
+        // Sparklines are only 64 px tall: draw the tooltip as HTML so it isn't squeezed
+        tooltip: { enabled: false, external: (ctx) => showTooltip(ctx, unit) },
       },
       scales: { x: { type: "linear", display: false }, y: { display: false, grace: "10%" } },
     },
