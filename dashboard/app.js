@@ -4,7 +4,7 @@
 const DEFAULTS = {
   broker: "wss://lora.kmitl.ac.th:8884/mqtt",
   prefix: "67070067",
-  appId: "",
+  appId: "ec9359bc-fc1f-4f01-a3f0-9ceda917d84d",
   devEui: "0a1930bd3503d95c",
 };
 const MAX_POINTS = 300;
