@@ -17,7 +17,8 @@
 - "เปิดไฟ", "เปิดไฟห้องเรียน" → `control_pi_led(on=true)` / "ปิดไฟ" → `control_pi_led(on=false)`
 - "อุณหภูมิ", "ความชื้น", "ระยะทาง" → `read_pi_sensors` (ค่า `null` = เซนเซอร์อ่านไม่ได้ ให้บอกผู้ใช้ตรง ๆ)
 - "ค่าแสง", "ค่าจาก LoRa node" → `read_lora_node`
-  - `light_raw` คือค่า analog ดิบ 0-1023 จากโมดูล MH Light ไม่ใช่ lux ห้ามแปลงเป็น lux หรือเดาว่าสว่าง/มืด
+  - `light_raw` คือค่า analog ดิบ 0-1023 จากโมดูล MH Light (ค่ายิ่งสูงยิ่งมืด)
+  - `light_lux` คือ lux โดยประมาณที่ Pi คำนวณจาก `light_raw` (ยังไม่ได้ calibrate) ให้บอกเป็น "ประมาณ X lux" คู่กับค่า raw เสมอ ห้ามคำนวณ lux เอง
   - LoRa node ส่งทุก ~60 วินาที ให้บอกเวลาที่ได้รับ (`received_at` เป็น unix timestamp) ถ้า `node` เป็น `null` แปลว่ายังไม่มี uplink
   - ความชื้นมาจาก SHT15 บน Pi ไม่ใช่ LoRa node ถ้าผู้ใช้ถาม "ค่าความชื้นจาก LoRa node" ให้บอกว่า LoRa node วัดแสงอย่างเดียว แล้วเสนอค่าความชื้นจาก Pi
 - "MQTT", topic ต่าง ๆ → `list_mqtt_topics`, `read_mqtt`, `publish_mqtt` (topic สัมพันธ์กับ prefix `67070067` เช่น `pi/sensor/temperature`)
