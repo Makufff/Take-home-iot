@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IoT Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>IoT Dashboard</h1>
+    <div class="conn">
+      <span id="conn-api" class="dot"></span> API
+      <span id="conn-mqtt" class="dot"></span> MQTT
+      <span id="conn-lora" class="dot"></span> LoRa
+    </div>
+  </header>
+
+  <main>
+    <section class="cards">
+      <div class="card">
+        <div class="label">Temperature</div>
+        <div class="value"><span id="temperature">--</span> °C</div>
+      </div>
+      <div class="card">
+        <div class="label">Humidity</div>
+        <div class="value"><span id="humidity">--</span> %</div>
+      </div>
+      <div class="card">
+        <div class="label">Distance</div>
+        <div class="value"><span id="distance">--</span> cm</div>
+      </div>
+      <div class="card">
+        <div class="label">LED (Raspberry Pi)</div>
+        <label class="switch">
+          <input type="checkbox" id="led">
+          <span class="slider"></span>
+        </label>
+        <span id="led-text" class="value small">--</span>
+      </div>
+    </section>
+
+    <section class="cards">
+      <div class="card wide">
+        <div class="label">LoRa node1 · Light (LDR)</div>
+        <div class="value"><span id="light-raw">--</span> <small>raw (0-1023)</small></div>
+        <div class="meta">
+          digital: <span id="light-digital">--</span> ·
+          RSSI: <span id="rssi">--</span> dBm ·
+          SNR: <span id="snr">--</span> dB ·
+          last uplink: <span id="lora-time">--</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card chart">
+      <div class="label">Live data (last 15 min)</div>
+      <canvas id="chart"></canvas>
+    </section>
+
+    <p class="footer">Pi updated: <span id="pi-time">--</span> <span id="simulate"></span></p>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
