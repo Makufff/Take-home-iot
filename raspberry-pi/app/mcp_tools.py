@@ -15,7 +15,7 @@ def create_mcp(service: IoTService) -> MCPServer:
     @mcp.tool()
     def read_pi_sensors() -> dict:
         """Read the Raspberry Pi sensors right now: temperature (°C) and humidity (%RH)
-        from the SHT15, and distance (cm) from the HC-SR04 ultrasonic sensor.
+        from the SHT3x, and distance (cm) from the HC-SR04 ultrasonic sensor.
         Also returns the current LED state. A null value means the sensor read failed."""
         values = service.read_pi_sensors()
         return {**values, "led": service.devices.led}

@@ -4,7 +4,7 @@
 
 ```
                  MCP (HTTP)                      GPIO
-AI Chat box ───────────────────▶ Raspberry Pi ─────────▶ SHT15 / HC-SR04 / LED
+AI Chat box ───────────────────▶ Raspberry Pi ──GPIO/I2C─▶ SHT3x / HC-SR04 / LED
  (Claude)                            │  ▲
                                      │  │ MQTT 1883
                                      ▼  │
@@ -34,10 +34,10 @@ LoRa node ──LoRa──▶ ChirpStack ──▶ MQTT broker lora.kmitl.ac.th 
 
 | อุปกรณ์ | ขาอุปกรณ์ | GPIO | Pin |
 | --- | --- | --- | --- |
-| SHT15 | VCC | 3.3V | 1 |
-| SHT15 | DATA | GPIO 2 | 3 |
-| SHT15 | SCK | GPIO 3 | 5 |
-| SHT15 | GND | GND | 9 |
+| SHT3x | VCC | 3.3V | 1 |
+| SHT3x | SDA (DATA) | GPIO 2 (SDA1) | 3 |
+| SHT3x | SCL (SCK) | GPIO 3 (SCL1) | 5 |
+| SHT3x | GND | GND | 9 |
 | HC-SR04 | VCC | 5V | 2 |
 | HC-SR04 | Trig | GPIO 14 | 8 |
 | HC-SR04 | Echo | GPIO 15 | 10 (ผ่าน voltage divider ด้านล่าง) |
@@ -48,9 +48,12 @@ LoRa node ──LoRa──▶ ChirpStack ──▶ MQTT broker lora.kmitl.ac.th 
 - **HC-SR04 Echo ออก 5V แต่ GPIO ของ Pi รับได้ 3.3V** ต้องแบ่งแรงดันก่อน:
   `Echo ── 1kΩ ──┬── GPIO 15`
   `              └── 2kΩ ── GND`
-- **SHT15** ใช้ไฟ 3.3V เท่านั้น (ห้ามต่อ 5V เพราะ DATA ต่อตรงเข้า Pi) โมดูลมี connector 5 ขา
-  ให้ดูชื่อขาที่พิมพ์บนบอร์ด (VCC / DATA / SCK / GND) ขาที่เหลือไม่ต้องต่อ
-- GPIO 2/3 บน Pi มี pull-up 1.8kΩ ในบอร์ดอยู่แล้ว ไม่ต้องใส่ pull-up ที่ DATA เพิ่ม
+- **เซนเซอร์อุณหภูมิ/ความชื้นเป็น SHT3x แบบ I2C (address 0x44)** แม้โมดูลบอร์ดเขียวจะถูกเรียกว่า SHT15
+  (ตรวจแล้วด้วย `i2cdetect -y 1` เจอ 0x44 และตอบคำสั่ง SHT3x) ต้องเปิด I2C ตามหัวข้อ "ตั้งค่า Pi"
+- ใช้ไฟ 3.3V เท่านั้น (ห้ามต่อ 5V เพราะ SDA/SCL ต่อตรงเข้า Pi) โมดูลมี connector 5 ขา
+  ให้ดูชื่อขาที่พิมพ์บนบอร์ด ขาที่เหลือไม่ต้องต่อ
+- GPIO 2/3 บน Pi มี pull-up 1.8kΩ ในบอร์ดอยู่แล้ว ไม่ต้องใส่ pull-up เพิ่ม
+- เช็กเซนเซอร์ (หยุด main.py ก่อน): `cd raspberry-pi && python -m tools.sht3x_check`
 
 ### LoRa node (Arduino)
 
@@ -127,7 +130,7 @@ sudo raspi-config
 ```
 
 - Interface Options → **Serial Port** → login shell: **No**, serial hardware: **No** (GPIO 14/15 เป็น UART)
-- Interface Options → **I2C** → **No** (SHT15 ไม่ใช่ I2C ใช้ GPIO 2/3 แบบ bit-bang)
+- Interface Options → **I2C** → **Yes** (SHT3x ใช้ I2C บน GPIO 2/3) หรือ `sudo raspi-config nonint do_i2c 0`
 - Reboot
 
 ### ติดตั้ง
@@ -223,7 +226,7 @@ LoRa uplink จาก ChirpStack: `application/{application_id}/device/{dev_eui}
 
 | Tool | ทำอะไร |
 | --- | --- |
-| `read_pi_sensors` | อ่านอุณหภูมิ/ความชื้น (SHT15) และระยะทาง (HC-SR04) |
+| `read_pi_sensors` | อ่านอุณหภูมิ/ความชื้น (SHT3x) และระยะทาง (HC-SR04) |
 | `control_pi_led` | เปิด/ปิด LED บน Pi |
 | `read_lora_node` | ค่าล่าสุดจาก LoRa node (แสง, RSSI, SNR) |
 | `list_mqtt_topics` | รายชื่อ topic ที่มีข้อความ |

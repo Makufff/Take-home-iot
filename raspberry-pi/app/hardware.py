@@ -1,4 +1,4 @@
-"""Local devices on the Raspberry Pi: SHT15, HC-SR04 and LED."""
+"""Local devices on the Raspberry Pi: SHT3x, HC-SR04 and LED."""
 import random
 import threading
 import time
@@ -6,106 +6,48 @@ import time
 from . import config
 
 
-class SHT15:
-    """Sensirion SHT1x bit-banged 2-wire protocol (not I2C).
+class SHT3x:
+    """Sensirion SHT3x over I2C (/dev/i2c-1: GPIO2 = SDA, GPIO3 = SCL).
 
-    DATA is driven low as an output and released (input + pull-up) for high,
-    so the sensor can pull it low for ACK and data-ready.
+    Uses the kernel i2c-dev interface directly, so no extra package is needed.
+    Requires I2C enabled (raspi-config nonint do_i2c 0).
     """
 
-    CMD_TEMPERATURE = 0x03
-    CMD_HUMIDITY = 0x05
-    CMD_SOFT_RESET = 0x1E
+    I2C_SLAVE = 0x0703
+    CMD_MEASURE = b"\x24\x00"  # single shot, high repeatability, no clock stretching
 
-    # Datasheet coefficients: VDD 3.3V (d1 interpolated), 14-bit T, 12-bit RH
-    D1 = -39.66
-    D2 = 0.01
-    C1, C2, C3 = -2.0468, 0.0367, -1.5955e-6
-    T1, T2 = 0.01, 0.00008
+    def __init__(self, bus=1, address=0x44):
+        import fcntl
+        import os
 
-    def __init__(self, gpio, data_pin, sck_pin):
-        self.gpio = gpio
-        self.data = data_pin
-        self.sck = sck_pin
-        gpio.setup(sck_pin, gpio.OUT, initial=gpio.LOW)
-        self._release()
-        self._reset_connection()
+        self._os = os
+        self.fd = os.open(f"/dev/i2c-{bus}", os.O_RDWR)
+        fcntl.ioctl(self.fd, self.I2C_SLAVE, address)
 
-    def _release(self):
-        self.gpio.setup(self.data, self.gpio.IN, pull_up_down=self.gpio.PUD_UP)
-
-    def _low(self):
-        self.gpio.setup(self.data, self.gpio.OUT, initial=self.gpio.LOW)
-
-    def _clock(self, level):
-        self.gpio.output(self.sck, level)
-        time.sleep(0.000002)
-
-    def _reset_connection(self):
-        self._release()
-        for _ in range(9):
-            self._clock(1)
-            self._clock(0)
-
-    def _start(self):
-        # DATA falls while SCK high, SCK pulses, DATA rises while SCK high
-        self._release()
-        self._clock(1)
-        self._low()
-        self._clock(0)
-        self._clock(1)
-        self._release()
-        self._clock(0)
-
-    def _send_byte(self, value):
-        for i in range(7, -1, -1):
-            if value & (1 << i):
-                self._release()
-            else:
-                self._low()
-            self._clock(1)
-            self._clock(0)
-        self._release()
-        self._clock(1)
-        ack = self.gpio.input(self.data) == 0
-        self._clock(0)
-        if not ack:
-            raise IOError("SHT15 did not ACK command")
-
-    def _read_byte(self, ack):
-        value = 0
-        self._release()
-        for _ in range(8):
-            self._clock(1)
-            value = (value << 1) | self.gpio.input(self.data)
-            self._clock(0)
-        if ack:
-            self._low()
-        self._clock(1)
-        self._clock(0)
-        self._release()
-        return value
-
-    def _measure(self, command):
-        self._start()
-        self._send_byte(command)
-        deadline = time.monotonic() + 0.5
-        while self.gpio.input(self.data):
-            if time.monotonic() > deadline:
-                self._reset_connection()
-                raise TimeoutError("SHT15 measurement timeout")
-            time.sleep(0.005)
-        msb = self._read_byte(ack=True)
-        lsb = self._read_byte(ack=False)  # skip CRC
-        return (msb << 8) | lsb
+    @staticmethod
+    def _crc(data):
+        crc = 0xFF
+        for byte in data:
+            crc ^= byte
+            for _ in range(8):
+                crc = ((crc << 1) ^ 0x31) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
+        return crc
 
     def read(self):
-        so_t = self._measure(self.CMD_TEMPERATURE)
-        temperature = self.D1 + self.D2 * so_t
-        so_rh = self._measure(self.CMD_HUMIDITY)
-        rh_linear = self.C1 + self.C2 * so_rh + self.C3 * so_rh * so_rh
-        humidity = (temperature - 25) * (self.T1 + self.T2 * so_rh) + rh_linear
+        try:
+            self._os.write(self.fd, self.CMD_MEASURE)
+            time.sleep(0.02)  # max 15.5 ms for high repeatability
+            raw = self._os.read(self.fd, 6)
+        except OSError as e:
+            raise IOError(f"SHT3x I2C error: {e}") from e
+        if len(raw) != 6 or self._crc(raw[0:2]) != raw[2] or self._crc(raw[3:5]) != raw[5]:
+            raise IOError("SHT3x CRC mismatch")
+        temperature = -45 + 175 * ((raw[0] << 8) | raw[1]) / 65535
+        humidity = 100 * ((raw[3] << 8) | raw[4]) / 65535
         return round(temperature, 2), round(max(0.0, min(100.0, humidity)), 2)
+
+    def close(self):
+        self._os.close(self.fd)
 
 
 class HCSR04:
@@ -163,7 +105,7 @@ class PiDevices:
         GPIO.setwarnings(False)
         self.gpio = GPIO
         GPIO.setup(config.PIN_LED, GPIO.OUT, initial=GPIO.LOW)
-        self.sht15 = SHT15(GPIO, config.PIN_SHT15_DATA, config.PIN_SHT15_SCK)
+        self.sht3x = SHT3x()
         self.ultrasonic = HCSR04(GPIO, config.PIN_TRIGGER, config.PIN_ECHO)
 
     def read_sensors(self):
@@ -176,9 +118,9 @@ class PiDevices:
                 }
             result = {"temperature": None, "humidity": None, "distance": None}
             try:
-                result["temperature"], result["humidity"] = self.sht15.read()
+                result["temperature"], result["humidity"] = self.sht3x.read()
             except (IOError, TimeoutError) as e:
-                print(f"[hardware] SHT15 error: {e}")
+                print(f"[hardware] SHT3x error: {e}")
             result["distance"] = self.ultrasonic.read()
             return result
 
@@ -195,4 +137,5 @@ class PiDevices:
 
     def close(self):
         if self.gpio is not None:
+            self.sht3x.close()
             self.gpio.cleanup()
