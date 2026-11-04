@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pi-iot": {
+      "type": "http",
+      "url": "http://${PI_HOST:-raspberrypi.local}:${PI_PORT:-8000}/mcp"
+    }
+  }
+}
