@@ -1,0 +1,7 @@
+mcp>=1.10
+fastapi>=0.110
+uvicorn>=0.29
+paho-mqtt>=2.0
+python-dotenv>=1.0
+# GPIO: RPi.GPIO-compatible API on top of lgpio (works on Pi 4 and Pi 5, Bookworm)
+rpi-lgpio; platform_machine == "aarch64" or platform_machine == "armv7l"
