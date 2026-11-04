@@ -77,7 +77,11 @@ void onEvent (ev_t ev) {
             Serial.println(F("EV_LINK_ALIVE"));
             break;
         case EV_TXSTART:
-            Serial.println(F("EV_TXSTART"));
+            // frameLen 16 = our 3-byte payload, ~12-15 = empty frame (MAC commands only)
+            Serial.print(F("EV_TXSTART seqnoUp="));
+            Serial.print(LMIC.seqnoUp);
+            Serial.print(F(" frameLen="));
+            Serial.println(LMIC.dataLen);
             break;
         case EV_TXCANCELED:
             Serial.println(F("EV_TXCANCELED"));
@@ -113,6 +117,13 @@ void do_send(osjob_t* j){
     Serial.print(lightRaw);
     Serial.print(F(" light_digital="));
     Serial.println(lightDigital);
+    Serial.print(F("payload fPort=1 hex="));
+    for (uint8_t i = 0; i < sizeof(payload); i++) {
+        if (payload[i] < 0x10) Serial.print('0');
+        Serial.print(payload[i], HEX);
+        Serial.print(' ');
+    }
+    Serial.println();
 
     // Prepare upstream data transmission at the next possible time.
     LMIC_setTxData2(1, payload, sizeof(payload), 0);
