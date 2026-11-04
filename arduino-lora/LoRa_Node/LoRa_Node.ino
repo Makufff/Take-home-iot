@@ -130,6 +130,9 @@ void setup() {
     os_init();
     // Reset the MAC state. Session and pending data transfers will be discarded.
     LMIC_reset();
+    // UNO R4 clock is not as precise as LMIC expects: widen the RX windows
+    // so the JoinAccept / downlinks are not missed.
+    LMIC_setClockError(MAX_CLOCK_ERROR * 1 / 100);
 
     LMIC_setupChannel(
         0,
