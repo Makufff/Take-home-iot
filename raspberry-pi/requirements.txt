@@ -1,4 +1,4 @@
-mcp>=1.10
+mcp>=2.3,<3
 fastapi>=0.110
 uvicorn>=0.29
 paho-mqtt>=2.0
