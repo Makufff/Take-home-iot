@@ -1,0 +1,5 @@
+4. Integrate เข้ากับ MQTT Broker
+การ Subscribe ข้อมูล ที่ส่งมาจาก End Device
+ให้ท้าการ Subscribe Topic
+application/{application_id}/device/{device_eui}/event/up
+ตัวอย่างผลที่แสดงที่ Serial monitor
