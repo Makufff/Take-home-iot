@@ -17,6 +17,7 @@ LoRa node ──LoRa──▶ ChirpStack ──▶ MQTT broker lora.kmitl.ac.th 
 | `arduino-lora/` | LoRa node: Arduino UNO R4 + Cytron LoRa RFM 915MHz shield + MH Light sensor (LDR) |
 | `raspberry-pi/` | MCP server + REST API + MQTT client บน Raspberry Pi |
 | `dashboard/` | เว็บ HTML/JS subscribe MQTT ผ่าน WebSocket แสดงค่า Pi + LoRa และสั่ง LED |
+| `client-mcp/` | ตั้งค่า Claude Code เป็น AI Chat box ต่อกับ MCP server บน Pi (ดู `client-mcp/README.md`) |
 | `reference/` | ไฟล์อ้างอิงจากโจทย์ |
 
 ทุกส่วนใช้ MQTT broker เดียวกัน: `lora.kmitl.ac.th` (TCP `1883`, WebSocket `wss://lora.kmitl.ac.th:8884/mqtt`, ไม่มี auth)
@@ -260,6 +261,8 @@ Dashboard ต่อ MQTT ผ่าน WebSocket (`wss://lora.kmitl.ac.th:8884/mq
 (LoRa ส่งทุก 60 วินาที ต้องรอ uplink แรกก่อน)
 
 ## 6. เชื่อม AI Chat box (Claude)
+
+วิธีที่ง่ายที่สุด: `cd client-mcp && claude` (ดู `client-mcp/README.md`) หรือตั้งค่าเองตามด้านล่าง
 
 เครื่องที่รัน Claude ต้องอยู่ในเครือข่ายเดียวกับ Pi (เปลี่ยน `raspberrypi.local` เป็น IP ของ Pi ถ้าหาชื่อไม่เจอ)
 
