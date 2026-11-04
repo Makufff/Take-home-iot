@@ -21,7 +21,7 @@ DEV_EUI    := $(shell printf '%s' '$(LORA_DEV_EUI)' | tr '[:upper:]' '[:lower:]'
 
 .DEFAULT_GOAL := help
 .PHONY: help setup setup-pi setup-arduino setup-mcp setup-dashboard pi-apt pi-install pi-run pi-sim pi-service pi-service-remove pi-logs \
-        sht15-check status client-install client-check claude claude-add \
+        pi-i2c sht3x-check status client-install client-check claude claude-add \
         dashboard mqtt-sub lora-sub led-on led-off clean
 
 help: ## Show this help
@@ -46,7 +46,7 @@ setup-dashboard: ## Ask for MQTT/LoRa ids -> dashboard/app.js defaults
 
 pi-apt: ## [Pi] Install system packages (sudo)
 	sudo apt update
-	sudo apt install -y git python3-venv python3-rpi-lgpio mosquitto-clients
+	sudo apt install -y git python3-venv python3-rpi-lgpio mosquitto-clients i2c-tools
 
 pi-install: ## [Pi] Create venv and install Python packages
 	@test -f $(PI_DIR)/.env || { echo "ไม่มี $(PI_DIR)/.env: รัน 'make setup' ก่อน"; exit 1; }
@@ -88,8 +88,12 @@ pi-service-remove: ## [Pi] Stop and remove systemd service
 pi-logs: ## [Pi] Follow service logs
 	journalctl -u $(SERVICE) -f
 
-sht15-check: ## [Pi] SHT15 wiring check (stop the server first)
-	cd $(PI_DIR) && .venv/bin/python -m tools.sht15_check
+pi-i2c: ## [Pi] Enable I2C for the SHT3x (reboot afterwards)
+	sudo raspi-config nonint do_i2c 0
+	@echo "เปิด I2C แล้ว: sudo reboot แล้วเช็กด้วย i2cdetect -y 1 (ต้องเจอ 0x44)"
+
+sht3x-check: ## [Pi] SHT3x (I2C 0x44) check (stop the server first)
+	cd $(PI_DIR) && .venv/bin/python -m tools.sht3x_check
 
 status: ## GET /api/status from the Pi
 	curl -s http://$(PI_HOST):$(HTTP_PORT)/api/status; echo

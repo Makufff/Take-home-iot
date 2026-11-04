@@ -39,7 +39,7 @@ LoRa node ──LoRa──▶ ChirpStack ──▶ MQTT broker lora.kmitl.ac.th 
 
 | เครื่อง | คำสั่ง |
 | --- | --- |
-| Pi | `make pi-apt pi-install` → `make pi-run` หรือ `make pi-service` (รันตอนเปิดเครื่อง) |
+| Pi | `make pi-apt pi-i2c` (แล้ว reboot) → `make pi-install` → `make pi-run` หรือ `make pi-service` (รันตอนเปิดเครื่อง) |
 | Client | `make client-install client-check` → `make claude` |
 | อื่น ๆ | `make dashboard`, `make status`, `make mqtt-sub`, `make lora-sub`, `make led-on` |
 
