@@ -3,73 +3,215 @@
 ระบบ IoT ควบคุม/อ่านค่าผ่าน AI Chat box (โจทย์: `reference/problem/IoT AI Chat Control Architecture.png`)
 
 ```
-AI Chat box (Claude) ──MCP (HTTP)──▶ Raspberry Pi ──GPIO──▶ SHT15 / HC-SR04 / LED
-                                       │  ▲
-                              REST API │  │ MQTT pub/sub
-                                       ▼  │
-                               Web Dashboard   HiveMQ (mqtt-dashboard.com)
-                                          ▲
-                                          │ MQTT (Pi bridge)
-LoRa node (UNO R4 + LDR) ──LoRa──▶ ChirpStack ──MQTT──▶ lora.kmitl.ac.th
+                 MCP (HTTP)                      GPIO
+AI Chat box ───────────────────▶ Raspberry Pi ─────────▶ SHT15 / HC-SR04 / LED
+ (Claude)                            │  ▲
+                                     │  │ MQTT 1883
+                                     ▼  │
+LoRa node ──LoRa──▶ ChirpStack ──▶ MQTT broker lora.kmitl.ac.th ──WSS 8884──▶ Web Dashboard
+(UNO R4 + LDR)                     (Pi topics + LoRa uplinks)
 ```
 
 | Folder | คืออะไร |
 | --- | --- |
 | `arduino-lora/` | LoRa node: Arduino UNO R4 + Cytron LoRa RFM 915MHz shield + MH Light sensor (LDR) |
-| `raspberry-pi/` | MCP server + REST API + MQTT bridge บน Raspberry Pi |
-| `dashboard/` | เว็บ HTML/JS แสดงค่าและสั่ง LED ผ่าน REST API ของ Pi |
+| `raspberry-pi/` | MCP server + REST API + MQTT client บน Raspberry Pi |
+| `dashboard/` | เว็บ HTML/JS subscribe MQTT ผ่าน WebSocket แสดงค่า Pi + LoRa และสั่ง LED |
 | `reference/` | ไฟล์อ้างอิงจากโจทย์ |
 
-## 1. arduino-lora
+ทุกส่วนใช้ MQTT broker เดียวกัน: `lora.kmitl.ac.th` (TCP `1883`, WebSocket `wss://lora.kmitl.ac.th:8884/mqtt`, ไม่มี auth)
 
-อ่าน MH Light sensor แล้วส่ง uplink ผ่าน ChirpStack ขึ้น MQTT `lora.kmitl.ac.th` ทุก 60 วินาที
+ลำดับการทำ: **1. ต่อสาย → 2. Arduino → 3. ChirpStack → 4. Raspberry Pi → 5. Dashboard → 6. เชื่อม AI**
 
-- A0 = ค่า analog (`light_raw` 0-1023), D0 = ค่า digital threshold (`light_digital`)
-- Payload 3 bytes: `[light_raw_hi, light_raw_lo, light_digital]`
+---
 
-ติดตั้ง:
+## 1. ต่อสาย
 
-1. Library: **MCCI LoRaWAN LMIC library** ตั้งค่า region ใน `project_config/lmic_project_config.h` เป็น `CFG_as923` และ `CFG_sx1276_radio`
-2. `cp arduino-lora/LoRa_Node/secrets.example.h arduino-lora/LoRa_Node/secrets.h` แล้วใส่ key จาก ChirpStack
-   (APPEUI/DEVEUI ต้องกลับลำดับ byte เป็น LSB, APPKEY ใส่ตามเดิม) — `secrets.h` ไม่ถูก commit
-3. Upload `arduino-lora/LoRa_Node/LoRa_Node.ino` (board: Arduino UNO R4)
-4. (แนะนำ) ใส่ codec `arduino-lora/chirpstack-codec.js` ใน Device profile ของ ChirpStack เพื่อให้ uplink มี field `object`
-   ถ้าไม่ใส่ Pi จะ decode จาก `data` เอง
+### Raspberry Pi
 
-## 2. raspberry-pi
+เลข GPIO เป็น BCM ส่วน "Pin" คือขาจริงบน header 40 ขา
 
-Server เดียว (port 8000):
+| อุปกรณ์ | ขาอุปกรณ์ | GPIO | Pin |
+| --- | --- | --- | --- |
+| SHT15 | VCC | 3.3V | 1 |
+| SHT15 | DATA | GPIO 2 | 3 |
+| SHT15 | SCK | GPIO 3 | 5 |
+| SHT15 | GND | GND | 9 |
+| HC-SR04 | VCC | 5V | 2 |
+| HC-SR04 | Trig | GPIO 14 | 8 |
+| HC-SR04 | Echo | GPIO 15 | 10 (ผ่าน voltage divider ด้านล่าง) |
+| HC-SR04 | GND | GND | 6 |
+| LED | ขายาว (+) | GPIO 23 | 16 (ผ่าน R 220-330 Ω) |
+| LED | ขาสั้น (−) | GND | 14 |
+
+- **HC-SR04 Echo ออก 5V แต่ GPIO ของ Pi รับได้ 3.3V** ต้องแบ่งแรงดันก่อน:
+  `Echo ── 1kΩ ──┬── GPIO 15`
+  `              └── 2kΩ ── GND`
+- **SHT15** ใช้ไฟ 3.3V เท่านั้น (ห้ามต่อ 5V เพราะ DATA ต่อตรงเข้า Pi) โมดูลมี connector 5 ขา
+  ให้ดูชื่อขาที่พิมพ์บนบอร์ด (VCC / DATA / SCK / GND) ขาที่เหลือไม่ต้องต่อ
+- GPIO 2/3 บน Pi มี pull-up 1.8kΩ ในบอร์ดอยู่แล้ว ไม่ต้องใส่ pull-up ที่ DATA เพิ่ม
+
+### LoRa node (Arduino)
+
+1. เสียบ Cytron LoRa RFM 915MHz shield บน UNO R4 และต่อเสาอากาศก่อนเปิดไฟทุกครั้ง
+2. ต่อ MH Light sensor (LDR) เข้ากับ shield:
+
+| MH Light sensor | Arduino |
+| --- | --- |
+| VCC | 5V |
+| GND | GND |
+| AO | A0 |
+| DO | D0 |
+
+---
+
+## 2. Arduino LoRa node
+
+อ่าน LDR แล้วส่ง uplink ขึ้น ChirpStack ทุก 60 วินาที (OTAA, AS923)
+Payload 3 bytes: `[light_raw_hi, light_raw_lo, light_digital]`
+- `light_raw` = `analogRead(A0)` 0-1023
+- `light_digital` = `digitalRead(D0)` 0/1 (threshold ปรับได้ที่ตัว R ปรับค่าบนโมดูล)
+
+ขั้นตอน:
+
+1. Arduino IDE → Boards Manager ติดตั้ง **Arduino UNO R4 Boards**
+2. Library Manager ติดตั้ง **MCCI LoRaWAN LMIC library**
+3. แก้ `Documents/Arduino/libraries/MCCI_LoRaWAN_LMIC_library/project_config/lmic_project_config.h` ให้เหลือ:
+   ```c
+   #define CFG_as923 1
+   #define CFG_sx1276_radio 1
+   ```
+4. สร้างไฟล์ key:
+   ```bash
+   cp arduino-lora/LoRa_Node/secrets.example.h arduino-lora/LoRa_Node/secrets.h
+   ```
+   ใส่ค่าจาก `reference/lora-uno-r4/chirpstack.txt`
+   - `APPEUI`, `DEVEUI` → **กลับลำดับ byte** (ChirpStack แสดง MSB แต่ LMIC ต้องการ LSB)
+   - `APPKEY` → ใส่ตามเดิม
+   (`secrets.h` อยู่ใน `.gitignore` จะไม่ถูก commit)
+5. เปิด `arduino-lora/LoRa_Node/LoRa_Node.ino` เลือก board **Arduino UNO R4 WiFi** (หรือ Minima) และ port แล้ว Upload
+6. เปิด Serial Monitor ที่ **9600** baud ควรเห็น:
+   ```
+   EV_JOINING
+   EV_JOINED
+   light_raw=512 light_digital=1
+   Packet queued
+   EV_TXCOMPLETE (includes waiting for RX windows)
+   ```
+   ถ้าค้างที่ `EV_JOINING` / `EV_JOIN_TXCOMPLETE: no JoinAccept` ให้เช็ก key, ลำดับ byte, เสาอากาศ และว่าอยู่ในระยะ gateway
+
+## 3. ChirpStack
+
+1. (แนะนำ) Device profile → Codec → JavaScript ใส่ `arduino-lora/chirpstack-codec.js`
+   เพื่อให้ uplink มี field `object: {light_raw, light_digital}` (ถ้าไม่ใส่ Pi กับ dashboard จะ decode จาก `data` เอง)
+2. จด **application_id** (UUID ในหน้า Application) เพื่อใช้ใน Pi และ dashboard
+3. เช็กว่าข้อมูลขึ้น MQTT แล้ว:
+   ```bash
+   mosquitto_sub -h lora.kmitl.ac.th -p 1883 -v \
+     -t "application/<application_id>/device/0a1930bd3503d95c/event/up"
+   ```
+
+## 4. Raspberry Pi
+
+Server เดียว port 8000:
 
 - `/mcp` — MCP server (Streamable HTTP) สำหรับ AI Chat box
-- `/api/*` — REST API สำหรับ dashboard
-- `/` — เสิร์ฟหน้า `dashboard/`
+- `/api/*` — REST API
+- `/` — หน้า dashboard
 
-### ต่อสาย (BCM)
-
-| อุปกรณ์ | GPIO |
-| --- | --- |
-| HC-SR04 Trigger | 14 |
-| HC-SR04 Echo | 15 (Echo เป็น 5V ต้องใช้ voltage divider ลงเหลือ 3.3V) |
-| LED | 23 |
-| SHT15 DATA | 2 |
-| SHT15 SCK | 3 |
-
-ตั้งค่า Pi ก่อน (`sudo raspi-config` → Interface Options):
-
-- **Serial Port: ปิด** login shell และ hardware serial เพราะ GPIO 14/15 คือ UART
-- **I2C: ปิด** เพราะ SHT15 ไม่ใช่ I2C (ใช้ bit-bang protocol ของ Sensirion บน GPIO 2/3)
-
-### ติดตั้งและรัน
+### ตั้งค่า Pi (ทำครั้งเดียว)
 
 ```bash
-cd raspberry-pi
-python3 -m venv .venv && source .venv/bin/activate
+sudo raspi-config
+```
+
+- Interface Options → **Serial Port** → login shell: **No**, serial hardware: **No** (GPIO 14/15 เป็น UART)
+- Interface Options → **I2C** → **No** (SHT15 ไม่ใช่ I2C ใช้ GPIO 2/3 แบบ bit-bang)
+- Reboot
+
+### ติดตั้ง
+
+```bash
+git clone git@github.com:Makufff/Take-home-iot.git
+cd Take-home-iot/raspberry-pi
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # ใส่ LORA_APPLICATION_ID, LORA_MQTT_USER/PASS, เปลี่ยน TOPIC_PREFIX
+cp .env.example .env
+nano .env
+```
+
+ใน `.env` ต้องแก้:
+
+| ค่า | ใส่อะไร |
+| --- | --- |
+| `TOPIC_PREFIX` | ชื่อที่ไม่ซ้ำคนอื่น (broker ใช้ร่วมกันทั้งคลาส) เช่น `take-home-iot-<ชื่อ>` |
+| `LORA_APPLICATION_ID` | application_id จาก ChirpStack |
+| `LORA_DEV_EUI` | DevEUI ตัวเล็ก (ตั้งไว้แล้ว `0a1930bd3503d95c`) |
+
+### รัน
+
+```bash
+source .venv/bin/activate
 python main.py
 ```
 
-ทดสอบบนเครื่องที่ไม่มี GPIO: `SIMULATE=1 python main.py` (ค่าเซนเซอร์สุ่ม)
+ควรเห็น:
+
+```
+[mqtt] lora.kmitl.ac.th connected: Success
+INFO:     Uvicorn running on http://0.0.0.0:8000
+```
+
+ทดสอบ:
+
+```bash
+curl http://localhost:8000/api/status
+mosquitto_sub -h lora.kmitl.ac.th -v -t "<TOPIC_PREFIX>/#"
+mosquitto_pub -h lora.kmitl.ac.th -t "<TOPIC_PREFIX>/pi/device/led/set" -m on
+```
+
+ทดสอบบนเครื่องที่ไม่มี GPIO (เช่น laptop): `SIMULATE=1 python main.py` (ค่าเซนเซอร์สุ่ม)
+
+### รันอัตโนมัติตอนเปิดเครื่อง (ไม่บังคับ)
+
+`/etc/systemd/system/pi-iot.service` (แก้ path/user ให้ตรง):
+
+```ini
+[Unit]
+Description=Pi IoT MCP server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/Take-home-iot/raspberry-pi
+ExecStart=/home/pi/Take-home-iot/raspberry-pi/.venv/bin/python main.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now pi-iot
+journalctl -u pi-iot -f
+```
+
+### MQTT topics (นำหน้าด้วย `TOPIC_PREFIX/`)
+
+| Topic | ทิศทาง | Payload |
+| --- | --- | --- |
+| `pi/sensor/temperature` | Pi → broker (retain) | `26.5` |
+| `pi/sensor/humidity` | Pi → broker (retain) | `62.0` |
+| `pi/sensor/distance` | Pi → broker (retain) | `120.3` |
+| `pi/device/led` | Pi → broker (retain) | `on` / `off` |
+| `pi/device/led/set` | ใครก็ได้ → Pi | `on` / `off` |
+| `pi/status` | Pi → broker (LWT, retain) | `online` / `offline` |
+| `lora/node1/data` | Pi → broker (retain) | JSON ค่าล่าสุดของ LoRa node |
+
+LoRa uplink จาก ChirpStack: `application/{application_id}/device/{dev_eui}/event/up` (ไม่มี prefix)
 
 ### MCP tools
 
@@ -82,14 +224,47 @@ python main.py
 | `read_mqtt` | อ่านข้อความล่าสุดของ topic |
 | `publish_mqtt` | ส่งข้อความไปยัง MQTT broker |
 
-เชื่อม Claude (เปลี่ยน `raspberrypi.local` เป็น IP ของ Pi):
+### REST API
+
+| Method | Path | |
+| --- | --- | --- |
+| GET | `/api/status` | ค่าล่าสุดทั้งหมด (Pi, LoRa, สถานะ MQTT) |
+| GET | `/api/history?minutes=15` | ประวัติค่าเซนเซอร์ Pi |
+| POST | `/api/pi/sensors/read` | อ่านเซนเซอร์ทันที |
+| POST | `/api/pi/led` | `{"on": true}` |
+
+## 5. Dashboard
+
+Dashboard ต่อ MQTT ผ่าน WebSocket (`wss://lora.kmitl.ac.th:8884/mqtt`) โดยตรง ไม่ต้องผ่าน Pi
+
+เปิดได้ 2 แบบ:
+
+- ผ่าน Pi: `http://<ip-ของ-pi>:8000/`
+- เปิดไฟล์ตรงบนเครื่องไหนก็ได้: ดับเบิลคลิก `dashboard/index.html` หรือ
+  ```bash
+  cd dashboard && python3 -m http.server 8080   # แล้วเปิด http://localhost:8080
+  ```
+
+ครั้งแรกจะเปิดช่อง **MQTT settings** ให้กรอก:
+
+- **Topic prefix** = `TOPIC_PREFIX` ใน `.env` ของ Pi
+- **ChirpStack application_id**
+- กด **Save & reconnect** (ค่าจะถูกจำไว้ใน browser)
+
+จุดสถานะมุมขวาบน: **MQTT** = ต่อ broker ได้, **Pi** = Pi online (`pi/status`), **LoRa** = ได้ uplink แล้ว
+(LoRa ส่งทุก 60 วินาที ต้องรอ uplink แรกก่อน)
+
+## 6. เชื่อม AI Chat box (Claude)
+
+เครื่องที่รัน Claude ต้องอยู่ในเครือข่ายเดียวกับ Pi (เปลี่ยน `raspberrypi.local` เป็น IP ของ Pi ถ้าหาชื่อไม่เจอ)
+
+**Claude Code**
 
 ```bash
-# Claude Code
 claude mcp add --transport http pi-iot http://raspberrypi.local:8000/mcp
 ```
 
-Claude Desktop (`claude_desktop_config.json`):
+**Claude Desktop** (Settings → Developer → Edit Config → `claude_desktop_config.json`, ต้องมี Node.js):
 
 ```json
 {
@@ -102,31 +277,9 @@ Claude Desktop (`claude_desktop_config.json`):
 }
 ```
 
-### MQTT topics (HiveMQ, นำหน้าด้วย `TOPIC_PREFIX`)
+แล้วรีสตาร์ท Claude Desktop ลองถาม:
 
-| Topic | ทิศทาง | Payload |
-| --- | --- | --- |
-| `pi/sensor/temperature` | Pi → broker (retain) | `26.5` |
-| `pi/sensor/humidity` | Pi → broker (retain) | `62.0` |
-| `pi/sensor/distance` | Pi → broker (retain) | `120.3` |
-| `pi/device/led` | Pi → broker (retain) | `on` / `off` |
-| `pi/device/led/set` | broker → Pi | `on` / `off` |
-| `pi/status` | Pi → broker (LWT) | `online` / `offline` |
-| `lora/node1/data` | Pi → broker (retain) | JSON จาก LoRa node |
-
-Pi subscribe `application/{LORA_APPLICATION_ID}/device/{LORA_DEV_EUI}/event/up` ที่ `lora.kmitl.ac.th`
-แล้ว publish ต่อไปที่ `lora/node1/data`
-
-### REST API
-
-| Method | Path | |
-| --- | --- | --- |
-| GET | `/api/status` | ค่าล่าสุดทั้งหมด (Pi, LoRa, สถานะ MQTT) |
-| GET | `/api/history?minutes=15` | ประวัติค่าเซนเซอร์ Pi |
-| POST | `/api/pi/sensors/read` | อ่านเซนเซอร์ทันที |
-| POST | `/api/pi/led` | `{"on": true}` |
-
-## 3. dashboard
-
-เปิด `http://raspberrypi.local:8000/` (Pi เสิร์ฟให้เอง)
-หรือเปิด `dashboard/index.html` จากที่อื่นแล้วระบุ API: `index.html?api=http://raspberrypi.local:8000`
+- "เปิดไฟห้องเรียน"
+- "อุณหภูมิตอนนี้เท่าไหร่"
+- "ค่าแสงจาก LoRa node"
+- "ระยะทางจาก ultrasonic เท่าไหร่"
