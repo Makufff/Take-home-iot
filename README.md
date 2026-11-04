@@ -132,9 +132,14 @@ sudo raspi-config
 ### ติดตั้ง
 
 ```bash
+# ต้องเป็น Raspberry Pi OS 64-bit (Bookworm ขึ้นไป, Python 3.10+)
+sudo apt update
+sudo apt install -y git python3-venv python3-rpi-lgpio mosquitto-clients
+
 git clone git@github.com:Makufff/Take-home-iot.git
 cd Take-home-iot/raspberry-pi
-python3 -m venv .venv
+# --system-site-packages เพื่อใช้ GPIO library (rpi-lgpio) ที่ติดตั้งจาก apt
+python3 -m venv --system-site-packages .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
