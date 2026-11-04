@@ -64,8 +64,8 @@ void onEvent (ev_t ev) {
             Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
             if (LMIC.txrxFlags & TXRX_ACK)
                 Serial.println(F("Received ack"));
-            // Schedule next transmission
-            os_setTimedCallback(&sendjob, os_getTime()+sec2osticks(TX_INTERVAL), do_send);
+            // Next do_send is scheduled by do_send itself: LMIC also sends its own
+            // MAC-only uplinks, and rescheduling here kept pushing our data back.
             break;
         case EV_RESET:
             Serial.println(F("EV_RESET"));
@@ -102,9 +102,11 @@ void onEvent (ev_t ev) {
 void do_send(osjob_t* j){
     // Check if there is not a current TX/RX job running
     if (LMIC.opmode & OP_TXRXPEND) {
-        Serial.println(F("OP_TXRXPEND, not sending"));
+        Serial.println(F("OP_TXRXPEND, retry in 5 s"));
+        os_setTimedCallback(&sendjob, os_getTime()+sec2osticks(5), do_send);
         return;
     }
+    os_setTimedCallback(&sendjob, os_getTime()+sec2osticks(TX_INTERVAL), do_send);
 
     uint16_t lightRaw = analogRead(LIGHT_ANALOG_PIN);
     uint8_t lightDigital = digitalRead(LIGHT_DIGITAL_PIN);
