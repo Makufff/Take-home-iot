@@ -1,0 +1,14 @@
+# Secrets
+.env
+arduino-lora/LoRa_Node/secrets.h
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
