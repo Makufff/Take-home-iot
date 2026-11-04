@@ -4,83 +4,121 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>IoT Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.16.1/mqtt.min.js"></script>
 </head>
 <body>
-  <header>
-    <h1>IoT Dashboard</h1>
-    <div class="conn">
-      <span id="conn-mqtt" class="dot"></span> MQTT
-      <span id="conn-pi" class="dot"></span> Pi
-      <span id="conn-lora" class="dot"></span> LoRa
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 0 1 14 0M8.5 12a3.5 3.5 0 0 1 7 0"/><circle cx="12" cy="12" r="1.4"/></svg>
+      </span>
+      <div>
+        <h1>IoT Dashboard</h1>
+        <p class="sub">Raspberry Pi + LoRa node · <span id="clock">--:--:--</span></p>
+      </div>
+    </div>
+    <div class="pills">
+      <span class="pill" id="conn-mqtt"><i></i>MQTT</span>
+      <span class="pill" id="conn-pi"><i></i>Pi</span>
+      <span class="pill" id="conn-lora"><i></i>LoRa</span>
+      <button class="icon-btn" id="settings-btn" title="ตั้งค่า MQTT" aria-label="ตั้งค่า MQTT">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
     </div>
   </header>
 
   <main>
-    <details class="card settings" id="settings">
-      <summary>MQTT settings</summary>
+    <section class="panel settings" id="settings" hidden>
       <form id="settings-form">
         <label>Broker (WebSocket)
           <input name="broker" required>
         </label>
-        <label>Topic prefix (same as TOPIC_PREFIX on the Pi)
+        <label>Topic prefix (TOPIC_PREFIX บน Pi)
           <input name="prefix">
         </label>
         <label>ChirpStack application_id
-          <input name="appId" placeholder="UUID from ChirpStack">
+          <input name="appId" placeholder="UUID จาก ChirpStack">
         </label>
         <label>Device EUI
           <input name="devEui">
         </label>
-        <button type="submit">Save &amp; reconnect</button>
+        <button type="submit">บันทึก &amp; เชื่อมต่อใหม่</button>
       </form>
-    </details>
-
-    <section class="cards">
-      <div class="card">
-        <div class="label">Temperature</div>
-        <div class="value"><span id="temperature">--</span> °C</div>
-      </div>
-      <div class="card">
-        <div class="label">Humidity</div>
-        <div class="value"><span id="humidity">--</span> %</div>
-      </div>
-      <div class="card">
-        <div class="label">Distance</div>
-        <div class="value"><span id="distance">--</span> cm</div>
-      </div>
-      <div class="card">
-        <div class="label">LED (Raspberry Pi)</div>
-        <label class="switch">
-          <input type="checkbox" id="led">
-          <span class="slider"></span>
-        </label>
-        <span id="led-text" class="value small">--</span>
-      </div>
     </section>
 
-    <section class="cards">
-      <div class="card wide">
-        <div class="label">LoRa node · Light (LDR)</div>
-        <div class="value"><span id="light-raw">--</span> <small>raw (0-1023)</small></div>
-        <div class="meta">
-          digital: <span id="light-digital">--</span> ·
-          RSSI: <span id="rssi">--</span> dBm ·
-          SNR: <span id="snr">--</span> dB ·
-          fCnt: <span id="fcnt">--</span> ·
-          last uplink: <span id="lora-time">--</span>
+    <h2 class="section-title">Raspberry Pi <span class="updated">อัปเดต <span id="pi-time">--</span></span></h2>
+    <section class="grid">
+      <article class="tile" style="--c: var(--temp)">
+        <div class="tile-head">
+          <span class="ico"><svg viewBox="0 0 24 24"><path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0z"/></svg></span>
+          อุณหภูมิ
         </div>
+        <div class="reading"><span id="temperature">--</span><em>°C</em></div>
+        <canvas class="spark" id="spark-temperature"></canvas>
+      </article>
+
+      <article class="tile" style="--c: var(--hum)">
+        <div class="tile-head">
+          <span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg></span>
+          ความชื้น
+        </div>
+        <div class="reading"><span id="humidity">--</span><em>%RH</em></div>
+        <canvas class="spark" id="spark-humidity"></canvas>
+      </article>
+
+      <article class="tile" style="--c: var(--dist)">
+        <div class="tile-head">
+          <span class="ico"><svg viewBox="0 0 24 24"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg></span>
+          ระยะทาง
+        </div>
+        <div class="reading"><span id="distance">--</span><em>cm</em></div>
+        <canvas class="spark" id="spark-distance"></canvas>
+      </article>
+
+      <article class="tile led-tile" id="led-tile">
+        <div class="tile-head">
+          <span class="ico"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.8V16h5v-.3c0-.7.4-1.4 1-1.8A6 6 0 0 0 12 3z"/></svg></span>
+          ไฟห้องเรียน
+        </div>
+        <label class="power">
+          <input type="checkbox" id="led">
+          <span class="power-btn" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>
+          </span>
+          <span class="power-text">สถานะ <b id="led-text">--</b></span>
+        </label>
+      </article>
+    </section>
+
+    <h2 class="section-title">LoRa node <span class="updated">รับล่าสุด <span id="lora-time">--</span> <span id="lora-ago" class="ago"></span></span></h2>
+    <section class="panel lora" style="--c: var(--light)">
+      <div class="lora-main">
+        <div class="tile-head">
+          <span class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span>
+          ค่าแสง (LDR)
+        </div>
+        <div class="reading big"><span id="light-raw">--</span><em>raw</em></div>
+        <div class="meter" aria-hidden="true"><div class="meter-fill" id="light-bar"></div></div>
+        <div class="scale"><span>0</span><span>ค่า analog ดิบ 0-1023 (ไม่ใช่ lux)</span><span>1023</span></div>
       </div>
-    </section>
 
-    <section class="card chart">
-      <div class="label">Live data</div>
-      <canvas id="chart"></canvas>
-    </section>
+      <dl class="stats">
+        <div><dt>Digital</dt><dd><span id="light-digital" class="badge">--</span></dd></div>
+        <div>
+          <dt>สัญญาณ</dt>
+          <dd class="signal"><span class="bars" id="signal-bars"><i></i><i></i><i></i><i></i></span> <span id="rssi">--</span> <small>dBm</small></dd>
+        </div>
+        <div><dt>SNR</dt><dd><span id="snr">--</span> <small>dB</small></dd></div>
+        <div><dt>fCnt</dt><dd id="fcnt">--</dd></div>
+      </dl>
 
-    <p class="footer">Pi last update: <span id="pi-time">--</span></p>
+      <canvas class="spark tall" id="spark-light"></canvas>
+    </section>
   </main>
 
   <script src="app.js"></script>

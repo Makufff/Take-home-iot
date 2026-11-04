@@ -7,7 +7,8 @@ const DEFAULTS = {
   appId: "ec9359bc-fc1f-4f01-a3f0-9ceda917d84d",
   devEui: "0a1930bd3503d95c",
 };
-const MAX_POINTS = 300;
+const MAX_POINTS = 120;
+const LORA_STALE_MS = 3 * 60 * 1000; // node sends every ~60 s
 const STORAGE_KEY = "iot-dashboard-settings";
 
 const $ = (id) => document.getElementById(id);
@@ -30,41 +31,97 @@ function saveSettings(s) {
 
 let settings = loadSettings();
 let client = null;
+let lastUplinkAt = null;
 
-const chart = new Chart($("chart"), {
-  type: "line",
-  data: {
-    datasets: [
-      { label: "Temperature (°C)", data: [], borderColor: "#e8693c", yAxisID: "y", tension: 0.3, pointRadius: 0 },
-      { label: "Humidity (%)", data: [], borderColor: "#2f7de1", yAxisID: "y", tension: 0.3, pointRadius: 0 },
-      { label: "Distance (cm)", data: [], borderColor: "#22a06b", yAxisID: "y1", tension: 0.3, pointRadius: 0 },
-      { label: "Light raw (LoRa)", data: [], borderColor: "#b06ad9", yAxisID: "y1", tension: 0.3, pointRadius: 2 },
-    ],
-  },
-  options: {
-    animation: false,
-    parsing: false,
-    interaction: { mode: "nearest", intersect: false },
-    scales: {
-      x: {
-        type: "linear",
-        ticks: { callback: (v) => new Date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
-      },
-      y: { position: "left", title: { display: true, text: "°C / %" } },
-      y1: { position: "right", title: { display: true, text: "cm / light" }, grid: { drawOnChartArea: false } },
-    },
-  },
-});
-
-function addPoint(index, value) {
-  const data = chart.data.datasets[index].data;
-  data.push({ x: Date.now(), y: value });
-  if (data.length > MAX_POINTS) data.shift();
-  chart.update();
+// ---------- sparklines ----------
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-function setDot(id, ok) {
-  $(id).classList.toggle("ok", !!ok);
+function sparkline(canvasId, colorVar, unit) {
+  const color = cssVar(colorVar);
+  const ctx = $(canvasId).getContext("2d");
+  return new Chart(ctx, {
+    type: "line",
+    data: {
+      datasets: [{
+        data: [],
+        borderColor: color,
+        borderWidth: 2,
+        tension: 0.35,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        fill: true,
+        backgroundColor: (c) => {
+          const { chartArea } = c.chart;
+          if (!chartArea) return "transparent";
+          const g = c.chart.ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          g.addColorStop(0, color + "55");
+          g.addColorStop(1, color + "00");
+          return g;
+        },
+      }],
+    },
+    options: {
+      animation: false,
+      parsing: false,
+      maintainAspectRatio: false,
+      layout: { padding: { top: 6 } },
+      interaction: { mode: "nearest", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          displayColors: false,
+          callbacks: {
+            title: (items) => new Date(items[0].parsed.x).toLocaleTimeString(),
+            label: (item) => `${item.parsed.y} ${unit}`,
+          },
+        },
+      },
+      scales: { x: { type: "linear", display: false }, y: { display: false, grace: "10%" } },
+    },
+  });
+}
+
+const sparks = {
+  temperature: sparkline("spark-temperature", "--temp", "°C"),
+  humidity: sparkline("spark-humidity", "--hum", "%RH"),
+  distance: sparkline("spark-distance", "--dist", "cm"),
+  light: sparkline("spark-light", "--light", "raw"),
+};
+
+function addPoint(name, value) {
+  const data = sparks[name].data.datasets[0].data;
+  data.push({ x: Date.now(), y: value });
+  if (data.length > MAX_POINTS) data.shift();
+  sparks[name].update();
+}
+
+// ---------- helpers ----------
+function setText(id, text) {
+  const el = $(id);
+  if (el.textContent === String(text)) return;
+  el.textContent = text;
+  el.classList.remove("flash");
+  void el.offsetWidth; // restart the animation
+  el.classList.add("flash");
+}
+
+function setPill(id, state) {
+  $(id).classList.toggle("ok", state === "ok");
+  $(id).classList.toggle("stale", state === "stale");
+}
+
+function now() {
+  return new Date().toLocaleTimeString();
+}
+
+function signalLevel(rssi) {
+  if (rssi == null) return 0;
+  if (rssi > -90) return 4;
+  if (rssi > -100) return 3;
+  if (rssi > -110) return 2;
+  return 1;
 }
 
 function topics() {
@@ -82,7 +139,8 @@ function topics() {
   };
 }
 
-// Same fallback as raspberry-pi/app/mqtt_bridge.py when ChirpStack has no codec
+// ---------- LoRa ----------
+// Same decoder as raspberry-pi/app/mqtt_bridge.py: [light_raw_hi, light_raw_lo, light_digital]
 function decodeLora(dataB64) {
   const raw = Uint8Array.from(atob(dataB64 || ""), (c) => c.charCodeAt(0));
   if (raw.length < 3) return {};
@@ -91,18 +149,29 @@ function decodeLora(dataB64) {
 
 function onUplink(text) {
   const msg = JSON.parse(text);
-  const data = msg.object || decodeLora(msg.data);
+  // Decode the raw bytes ourselves so a mismatched ChirpStack codec can't hide light_raw.
+  let data = decodeLora(msg.data);
+  if (data.light_raw === undefined && msg.object) data = msg.object;
   const rx = (msg.rxInfo || [{}])[0];
-  $("light-raw").textContent = data.light_raw ?? "--";
-  $("light-digital").textContent = data.light_digital ?? "--";
-  $("rssi").textContent = rx.rssi ?? "--";
-  $("snr").textContent = rx.snr ?? rx.loRaSNR ?? "--";
-  $("fcnt").textContent = msg.fCnt ?? "--";
-  $("lora-time").textContent = new Date().toLocaleTimeString();
-  setDot("conn-lora", true);
-  if (data.light_raw !== undefined) addPoint(3, data.light_raw);
+  const rssi = rx.rssi ?? null;
+
+  setText("rssi", rssi ?? "--");
+  setText("snr", rx.snr ?? rx.loRaSNR ?? "--");
+  setText("fcnt", msg.fCnt ?? "--");
+  $("signal-bars").dataset.level = signalLevel(rssi);
+  $("lora-time").textContent = now();
+  lastUplinkAt = Date.now();
+  setPill("conn-lora", "ok");
+
+  // MAC-only uplinks carry no sensor data: keep showing the last light reading
+  if (data.light_raw === undefined) return;
+  setText("light-raw", data.light_raw);
+  setText("light-digital", data.light_digital ?? "--");
+  $("light-bar").style.width = `${Math.min(100, (data.light_raw / 1023) * 100)}%`;
+  addPoint("light", data.light_raw);
 }
 
+// ---------- MQTT ----------
 function onMessage(topic, payload) {
   const t = topics();
   const text = payload.toString();
@@ -110,31 +179,31 @@ function onMessage(topic, payload) {
   try {
     switch (topic) {
       case t.temperature:
-        $("temperature").textContent = num.toFixed(1);
-        addPoint(0, num);
-        break;
       case t.humidity:
-        $("humidity").textContent = num.toFixed(1);
-        addPoint(1, num);
+      case t.distance: {
+        const name = Object.keys(t).find((k) => t[k] === topic);
+        if (Number.isNaN(num)) return;
+        setText(name, num.toFixed(1));
+        addPoint(name, num);
         break;
-      case t.distance:
-        $("distance").textContent = num.toFixed(1);
-        addPoint(2, num);
+      }
+      case t.led: {
+        const on = text === "on";
+        $("led").checked = on;
+        $("led-tile").classList.toggle("on", on);
+        setText("led-text", on ? "เปิด" : "ปิด");
         break;
-      case t.led:
-        $("led").checked = text === "on";
-        $("led-text").textContent = text.toUpperCase();
-        break;
+      }
       case t.status:
-        setDot("conn-pi", text === "online");
-        break;
+        setPill("conn-pi", text === "online" ? "ok" : "");
+        return;
       case t.uplink:
         onUplink(text);
         return;
       default:
         return;
     }
-    $("pi-time").textContent = new Date().toLocaleTimeString();
+    $("pi-time").textContent = now();
   } catch (e) {
     console.error("bad message on", topic, e);
   }
@@ -142,9 +211,9 @@ function onMessage(topic, payload) {
 
 function connect() {
   if (client) client.end(true);
-  setDot("conn-mqtt", false);
-  setDot("conn-pi", false);
-  setDot("conn-lora", false);
+  setPill("conn-mqtt", "");
+  setPill("conn-pi", "");
+  setPill("conn-lora", "");
 
   client = mqtt.connect(settings.broker, {
     clientId: "dashboard-" + Math.random().toString(16).slice(2, 10),
@@ -152,35 +221,53 @@ function connect() {
   });
 
   client.on("connect", () => {
-    setDot("conn-mqtt", true);
+    setPill("conn-mqtt", "ok");
     const t = topics();
     const subs = [t.temperature, t.humidity, t.distance, t.led, t.status];
     if (t.uplink) subs.push(t.uplink);
     client.subscribe(subs, { qos: 1 });
   });
-  client.on("close", () => setDot("conn-mqtt", false));
+  client.on("close", () => setPill("conn-mqtt", ""));
   client.on("error", (e) => console.error("mqtt error", e));
   client.on("message", onMessage);
 }
 
+// ---------- clock + LoRa freshness ----------
+function tick() {
+  $("clock").textContent = now();
+  if (lastUplinkAt) {
+    const s = Math.round((Date.now() - lastUplinkAt) / 1000);
+    $("lora-ago").textContent = s < 60 ? `(${s} วินาทีที่แล้ว)` : `(${Math.floor(s / 60)} นาที ${s % 60} วินาทีที่แล้ว)`;
+    if (Date.now() - lastUplinkAt > LORA_STALE_MS) setPill("conn-lora", "stale");
+  }
+}
+setInterval(tick, 1000);
+tick();
+
+// ---------- controls ----------
 $("led").addEventListener("change", (e) => {
   if (!client || !client.connected) {
     e.target.checked = !e.target.checked;
-    alert("MQTT is not connected");
+    alert("ยังไม่ได้เชื่อมต่อ MQTT");
     return;
   }
   // The Pi switches the LED and publishes the new state on pi/device/led
   client.publish(topics().ledSet, e.target.checked ? "on" : "off", { qos: 1 });
 });
 
+$("settings-btn").addEventListener("click", () => {
+  $("settings").hidden = !$("settings").hidden;
+});
+
 const form = $("settings-form");
 for (const [k, v] of Object.entries(settings)) form.elements[k].value = v;
-if (!settings.appId) $("settings").open = true;
+if (!settings.appId) $("settings").hidden = false;
 
 form.addEventListener("submit", (e) => {
   e.preventDefault();
   settings = Object.fromEntries(Object.keys(DEFAULTS).map((k) => [k, form.elements[k].value.trim()]));
   saveSettings(settings);
+  $("settings").hidden = true;
   connect();
 });
 
