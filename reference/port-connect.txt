@@ -1,0 +1,4 @@
+Trigger (HC-SR04) : GPIO 14
+Echo (HC-SR04) : GPIO 15
+Temperature (TTC 05103) : GPIO 18
+LED : GPIO 23
