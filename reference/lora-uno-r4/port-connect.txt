@@ -1,0 +1,2 @@
+MH-Sensor-Series A0 on Shield-lora-rfm 915MHz : A0
+MH-Sensor-Series D1 on Shield-lora-rfm 915MHz : 0

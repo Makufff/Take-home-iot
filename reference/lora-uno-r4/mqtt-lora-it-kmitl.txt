@@ -1,0 +1,3 @@
+mqtt-lora-host : lora.kmitl.ac.th
+mqtt-lora-port : 1883
+mqtt-lora-websocket-port : 8884
