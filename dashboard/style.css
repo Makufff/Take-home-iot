@@ -191,6 +191,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 40px; }
   color: var(--muted);
 }
 .reading.big { font-size: 3.6rem; }
+.reading .approx { margin-right: 4px; font-size: 0.5em; font-weight: 500; color: var(--muted); vertical-align: 0.4em; }
+.raw-line { margin: 4px 0 0; font-size: 0.85rem; color: var(--muted); }
+.raw-line b { font-family: "JetBrains Mono", ui-monospace, monospace; color: var(--text); }
 
 .reading span.flash { animation: flash 0.8s ease-out; }
 @keyframes flash {

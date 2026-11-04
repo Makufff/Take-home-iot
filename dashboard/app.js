@@ -147,6 +147,19 @@ function decodeLora(dataB64) {
   return { light_raw: (raw[0] << 8) | raw[1], light_digital: raw[2] };
 }
 
+// Same rough estimate as raw_to_lux() in raspberry-pi/app/mqtt_bridge.py (uncalibrated)
+const LDR = { fixedOhms: 10000, r10Ohms: 15000, gamma: 0.7 };
+function rawToLux(raw) {
+  if (!(raw > 0 && raw < 1023)) return null;
+  const rLdr = (LDR.fixedOhms * raw) / (1023 - raw);
+  return 10 * (LDR.r10Ohms / rLdr) ** (1 / LDR.gamma);
+}
+
+function formatLux(lux) {
+  if (lux == null) return "--";
+  return lux < 10 ? lux.toFixed(1) : Math.round(lux).toLocaleString();
+}
+
 function onUplink(text) {
   const msg = JSON.parse(text);
   // Decode the raw bytes ourselves so a mismatched ChirpStack codec can't hide light_raw.
@@ -165,6 +178,7 @@ function onUplink(text) {
 
   // MAC-only uplinks carry no sensor data: keep showing the last light reading
   if (data.light_raw === undefined) return;
+  setText("light-lux", formatLux(rawToLux(data.light_raw)));
   setText("light-raw", data.light_raw);
   setText("light-digital", data.light_digital ?? "--");
   $("light-bar").style.width = `${Math.min(100, (data.light_raw / 1023) * 100)}%`;
