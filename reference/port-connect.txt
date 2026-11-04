@@ -1,5 +1,8 @@
 Trigger (HC-SR04) : GPIO 14
 Echo (HC-SR04) : GPIO 15
+LED : GPIO 23
+
+--green SHT15 temperature and humidity sensor module mounted on a small breakout PCB with a 5-pin JST/MX connector--
+
 SHT15 Data : GPIO 02
 SHT15 SCK : GPIO 03
-LED : GPIO 23
