@@ -145,7 +145,7 @@ nano .env
 
 | ค่า | ใส่อะไร |
 | --- | --- |
-| `TOPIC_PREFIX` | ชื่อที่ไม่ซ้ำคนอื่น (broker ใช้ร่วมกันทั้งคลาส) เช่น `take-home-iot-<ชื่อ>` |
+| `TOPIC_PREFIX` | `67070067` (ตั้งไว้แล้ว ต้องตรงกับช่อง Topic prefix ใน dashboard) |
 | `LORA_APPLICATION_ID` | application_id จาก ChirpStack |
 | `LORA_DEV_EUI` | DevEUI ตัวเล็ก (ตั้งไว้แล้ว `0a1930bd3503d95c`) |
 
@@ -167,8 +167,8 @@ INFO:     Uvicorn running on http://0.0.0.0:8000
 
 ```bash
 curl http://localhost:8000/api/status
-mosquitto_sub -h lora.kmitl.ac.th -v -t "<TOPIC_PREFIX>/#"
-mosquitto_pub -h lora.kmitl.ac.th -t "<TOPIC_PREFIX>/pi/device/led/set" -m on
+mosquitto_sub -h lora.kmitl.ac.th -v -t "67070067/#"
+mosquitto_pub -h lora.kmitl.ac.th -t "67070067/pi/device/led/set" -m on
 ```
 
 ทดสอบบนเครื่องที่ไม่มี GPIO (เช่น laptop): `SIMULATE=1 python main.py` (ค่าเซนเซอร์สุ่ม)
@@ -199,7 +199,7 @@ sudo systemctl enable --now pi-iot
 journalctl -u pi-iot -f
 ```
 
-### MQTT topics (นำหน้าด้วย `TOPIC_PREFIX/`)
+### MQTT topics (นำหน้าด้วย `67070067/`)
 
 | Topic | ทิศทาง | Payload |
 | --- | --- | --- |
@@ -247,7 +247,7 @@ Dashboard ต่อ MQTT ผ่าน WebSocket (`wss://lora.kmitl.ac.th:8884/mq
 
 ครั้งแรกจะเปิดช่อง **MQTT settings** ให้กรอก:
 
-- **Topic prefix** = `TOPIC_PREFIX` ใน `.env` ของ Pi
+- **Topic prefix** = `67070067` (ตั้งไว้ให้แล้ว ต้องตรงกับ `TOPIC_PREFIX` ใน `.env` ของ Pi)
 - **ChirpStack application_id**
 - กด **Save & reconnect** (ค่าจะถูกจำไว้ใน browser)
 

@@ -3,7 +3,7 @@
 //   application/{appId}/device/{devEui}/event/up            <- ChirpStack (LoRa node)
 const DEFAULTS = {
   broker: "wss://lora.kmitl.ac.th:8884/mqtt",
-  prefix: "take-home-iot",
+  prefix: "67070067",
   appId: "",
   devEui: "0a1930bd3503d95c",
 };

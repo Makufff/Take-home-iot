@@ -32,7 +32,7 @@ DASHBOARD_DIR = Path(os.getenv("DASHBOARD_DIR", BASE_DIR.parent / "dashboard"))
 # uplinks of the LoRa node are on the same broker.
 MQTT_HOST = os.getenv("MQTT_HOST", "lora.kmitl.ac.th")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
-TOPIC_PREFIX = os.getenv("TOPIC_PREFIX", "take-home-iot").strip("/")
+TOPIC_PREFIX = os.getenv("TOPIC_PREFIX", "67070067").strip("/")
 
 # ChirpStack: uplink topic application/{LORA_APPLICATION_ID}/device/{LORA_DEV_EUI}/event/up
 LORA_APPLICATION_ID = os.getenv("LORA_APPLICATION_ID", "")
