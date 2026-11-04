@@ -24,6 +24,25 @@ LoRa node ──LoRa──▶ ChirpStack ──▶ MQTT broker lora.kmitl.ac.th 
 
 ลำดับการทำ: **1. ต่อสาย → 2. Arduino → 3. ChirpStack → 4. Raspberry Pi → 5. Dashboard → 6. เชื่อม AI**
 
+### Setup เร็ว (Makefile)
+
+ตั้งค่าแยกทีละส่วน (ถามเฉพาะค่าที่ส่วนนั้นใช้) หรือ `make setup` เพื่อทำทุกส่วนในครั้งเดียว
+
+| คำสั่ง | ถามอะไร | เขียนไฟล์ |
+| --- | --- | --- |
+| `make setup-pi` | topic prefix, MQTT host/port, application_id, DevEUI, port, SIMULATE | `raspberry-pi/.env` |
+| `make setup-arduino` | DevEUI, JoinEUI, AppKey (กลับลำดับ byte ให้เอง) + ตั้ง LMIC เป็น AS923 | `arduino-lora/LoRa_Node/secrets.h` |
+| `make setup-mcp` | IP/host และ port ของ Pi | `client-mcp/.mcp.json` |
+| `make setup-dashboard` | WebSocket URL, topic prefix, application_id, DevEUI | `dashboard/app.js` |
+
+คำตอบเก็บไว้ใน `.env` ที่ root (รันซ้ำได้ ค่าเดิมจะเป็น default) `make help` ดูคำสั่งทั้งหมด จากนั้น:
+
+| เครื่อง | คำสั่ง |
+| --- | --- |
+| Pi | `make pi-apt pi-install` → `make pi-run` หรือ `make pi-service` (รันตอนเปิดเครื่อง) |
+| Client | `make client-install client-check` → `make claude` |
+| อื่น ๆ | `make dashboard`, `make status`, `make mqtt-sub`, `make lora-sub`, `make led-on` |
+
 ---
 
 ## 1. ต่อสาย
