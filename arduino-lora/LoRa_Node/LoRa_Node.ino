@@ -1,13 +1,12 @@
 /*******************************************************************************
  * LoRa Node: Arduino UNO R4 WiFi + Cytron LoRa RFM 915MHz shield
  *
- * Uplink (fPort 1, every TX_INTERVAL seconds, 4 bytes):
- *   byte 0-1 : light_raw    (uint16, big endian, analogRead(A0) 0-1023)
- *   byte 2   : light_digital (digitalRead(D0) of MH-Sensor-Series, 0/1)
- *   byte 3   : led          (LED matrix state, 0 = off, 1 = on)
+ * Reads the MH-Sensor-Series light sensor (LDR) and sends it through
+ * ChirpStack to the MQTT broker at lora.kmitl.ac.th.
  *
- * Downlink (fPort 1, 1 byte):
- *   0x00 = LED matrix off, 0x01 = LED matrix on
+ * Uplink (fPort 1, every TX_INTERVAL seconds, 3 bytes):
+ *   byte 0-1 : light_raw     (uint16, big endian, analogRead(A0) 0-1023)
+ *   byte 2   : light_digital (digitalRead(D0) of MH-Sensor-Series, 0/1)
  *
  * Based on reference/lora-uno-r4/LoRa_OTAA.ino (MCCI LMIC, OTAA).
  * Keys live in secrets.h (copy secrets.example.h -> secrets.h).
@@ -16,7 +15,6 @@
 #include <lmic.h>
 #include <hal/hal.h>
 #include <SPI.h>
-#include "Arduino_LED_Matrix.h"
 #include "secrets.h"
 
 void os_getArtEui (u1_t* buf) { memcpy_P(buf, APPEUI, 8); }
@@ -28,8 +26,7 @@ const int LIGHT_ANALOG_PIN = A0;
 const int LIGHT_DIGITAL_PIN = 0;
 
 // Schedule TX every this many seconds (might become longer due to duty
-// cycle limitations). A downlink is only received right after an uplink
-// (Class A), so this is also the worst-case delay for an LED command.
+// cycle limitations).
 const unsigned TX_INTERVAL = 60;
 
 // Pin mapping (Cytron LoRa RFM shield)
@@ -40,56 +37,8 @@ const lmic_pinmap lmic_pins = {
     .dio = {2, 5, 6},
 };
 
-static uint8_t payload[4];
+static uint8_t payload[3];
 static osjob_t sendjob;
-
-ArduinoLEDMatrix matrix;
-static bool ledOn = false;
-
-// 8x12 light bulb icon shown when the LED is on
-static uint8_t frameOn[8][12] = {
-    { 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0 },
-    { 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0 },
-    { 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0 },
-    { 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0 },
-    { 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0 },
-    { 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0 },
-    { 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0 },
-};
-static uint8_t frameOff[8][12] = { 0 };
-
-void setLed(bool on) {
-    ledOn = on;
-    if (on)
-        matrix.renderBitmap(frameOn, 8, 12);
-    else
-        matrix.renderBitmap(frameOff, 8, 12);
-    Serial.print(F("LED matrix: "));
-    Serial.println(on ? F("ON") : F("OFF"));
-}
-
-void handleDownlink() {
-    if (LMIC.dataLen == 0)
-        return;
-
-    Serial.print(F("Downlink fPort "));
-    Serial.print(LMIC.frame[LMIC.dataBeg - 1]);
-    Serial.print(F(", HEX: "));
-    for (int i = 0; i < LMIC.dataLen; i++) {
-        if (LMIC.frame[LMIC.dataBeg + i] < 0x10)
-            Serial.print('0');
-        Serial.print(LMIC.frame[LMIC.dataBeg + i], HEX);
-        Serial.print(' ');
-    }
-    Serial.println();
-
-    uint8_t cmd = LMIC.frame[LMIC.dataBeg];
-    if (cmd == 0x00 || cmd == 0x01)
-        setLed(cmd == 0x01);
-    else
-        Serial.println(F("Unknown command"));
-}
 
 void onEvent (ev_t ev) {
     Serial.print(os_getTime());
@@ -115,7 +64,6 @@ void onEvent (ev_t ev) {
             Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
             if (LMIC.txrxFlags & TXRX_ACK)
                 Serial.println(F("Received ack"));
-            handleDownlink();
             // Schedule next transmission
             os_setTimedCallback(&sendjob, os_getTime()+sec2osticks(TX_INTERVAL), do_send);
             break;
@@ -160,14 +108,11 @@ void do_send(osjob_t* j){
     payload[0] = lightRaw >> 8;
     payload[1] = lightRaw & 0xFF;
     payload[2] = lightDigital;
-    payload[3] = ledOn ? 1 : 0;
 
     Serial.print(F("light_raw="));
     Serial.print(lightRaw);
     Serial.print(F(" light_digital="));
-    Serial.print(lightDigital);
-    Serial.print(F(" led="));
-    Serial.println(ledOn);
+    Serial.println(lightDigital);
 
     // Prepare upstream data transmission at the next possible time.
     LMIC_setTxData2(1, payload, sizeof(payload), 0);
@@ -180,8 +125,6 @@ void setup() {
     Serial.println(F("Starting"));
 
     pinMode(LIGHT_DIGITAL_PIN, INPUT);
-    matrix.begin();
-    setLed(false);
 
     // LMIC init
     os_init();
