@@ -133,7 +133,7 @@ void setup() {
 
     LMIC_setupChannel(
         0,
-        923200000,
+        924200000,
         DR_RANGE_MAP(DR_SF12, DR_SF7),
         BAND_CENTI
     );
