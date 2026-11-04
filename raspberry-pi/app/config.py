@@ -28,15 +28,12 @@ HTTP_HOST = os.getenv("HTTP_HOST", "0.0.0.0")
 HTTP_PORT = int(os.getenv("HTTP_PORT", "8000"))
 DASHBOARD_DIR = Path(os.getenv("DASHBOARD_DIR", BASE_DIR.parent / "dashboard"))
 
-# Main MQTT broker (HiveMQ public broker)
-MQTT_HOST = os.getenv("MQTT_HOST", "mqtt-dashboard.com")
+# MQTT broker (lora.kmitl.ac.th, no auth). The Pi topics and the ChirpStack
+# uplinks of the LoRa node are on the same broker.
+MQTT_HOST = os.getenv("MQTT_HOST", "lora.kmitl.ac.th")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 TOPIC_PREFIX = os.getenv("TOPIC_PREFIX", "take-home-iot").strip("/")
 
-# ChirpStack MQTT (lora.kmitl.ac.th)
-LORA_MQTT_HOST = os.getenv("LORA_MQTT_HOST", "lora.kmitl.ac.th")
-LORA_MQTT_PORT = int(os.getenv("LORA_MQTT_PORT", "1883"))
-LORA_MQTT_USER = os.getenv("LORA_MQTT_USER", "")
-LORA_MQTT_PASS = os.getenv("LORA_MQTT_PASS", "")
+# ChirpStack: uplink topic application/{LORA_APPLICATION_ID}/device/{LORA_DEV_EUI}/event/up
 LORA_APPLICATION_ID = os.getenv("LORA_APPLICATION_ID", "")
 LORA_DEV_EUI = os.getenv("LORA_DEV_EUI", "").lower()

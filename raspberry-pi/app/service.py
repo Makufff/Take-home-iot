@@ -12,8 +12,7 @@ from .mqtt_bridge import (
     TOPIC_LED_SET,
     TOPIC_LORA_DATA,
     TOPIC_TEMPERATURE,
-    LoraBroker,
-    MainBroker,
+    Broker,
 )
 
 HISTORY_SIZE = 720  # 1 hour at a 5 s sample interval
@@ -26,8 +25,7 @@ def _parse_on(text):
 class IoTService:
     def __init__(self):
         self.devices = PiDevices()
-        self.mqtt = MainBroker(on_command=self._on_mqtt_command)
-        self.lora = LoraBroker(on_uplink=self._on_lora_uplink)
+        self.mqtt = Broker(on_command=self._on_mqtt_command, on_uplink=self._on_lora_uplink)
         self.history = deque(maxlen=HISTORY_SIZE)
         self.pi = {"temperature": None, "humidity": None, "distance": None, "updated_at": None}
         self.lora_node = None
@@ -36,13 +34,11 @@ class IoTService:
 
     def start(self):
         self.mqtt.start()
-        self.lora.start()
         self._thread.start()
 
     def stop(self):
         self._stop.set()
         self.mqtt.stop()
-        self.lora.stop()
         self.devices.close()
 
     # Raspberry Pi
@@ -86,8 +82,7 @@ class IoTService:
             "pi": {**self.pi, "led": self.devices.led},
             "lora": {
                 "node": self.lora_node,
-                "enabled": self.lora.enabled,
-                "connected": self.lora.connected,
+                "enabled": self.mqtt.lora_enabled,
             },
             "mqtt": {"host": config.MQTT_HOST, "connected": self.mqtt.connected, "prefix": config.TOPIC_PREFIX},
             "simulate": config.SIMULATE,

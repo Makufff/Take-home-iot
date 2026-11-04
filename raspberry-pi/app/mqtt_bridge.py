@@ -1,4 +1,4 @@
-"""MQTT clients: HiveMQ (main broker) and ChirpStack uplinks (lora.kmitl.ac.th)."""
+"""MQTT client for lora.kmitl.ac.th: Pi topics + ChirpStack uplinks of the LoRa node."""
 import base64
 import json
 import threading
@@ -20,6 +20,7 @@ TOPIC_LED = topic("pi/device/led")
 TOPIC_LED_SET = topic("pi/device/led/set")
 TOPIC_STATUS = topic("pi/status")
 TOPIC_LORA_DATA = topic("lora/node1/data")
+TOPIC_LORA_UPLINK = f"application/{config.LORA_APPLICATION_ID}/device/{config.LORA_DEV_EUI}/event/up"
 
 
 def decode_lora_payload(data_b64):
@@ -49,11 +50,13 @@ def parse_chirpstack_uplink(payload):
     }
 
 
-class MainBroker:
-    """HiveMQ client: publishes Pi data, caches every message under TOPIC_PREFIX."""
+class Broker:
+    """Publishes Pi data, caches every message under TOPIC_PREFIX, receives LoRa uplinks."""
 
-    def __init__(self, on_command):
+    def __init__(self, on_command, on_uplink):
         self.on_command = on_command
+        self.on_uplink = on_uplink
+        self.lora_enabled = bool(config.LORA_APPLICATION_ID and config.LORA_DEV_EUI)
         self.messages = {}
         self._lock = threading.Lock()
         self.connected = False
@@ -77,12 +80,22 @@ class MainBroker:
         print(f"[mqtt] {config.MQTT_HOST} connected: {reason_code}")
         client.publish(TOPIC_STATUS, "online", qos=1, retain=True)
         client.subscribe(topic("#") if config.TOPIC_PREFIX else "#", qos=1)
+        if self.lora_enabled:
+            client.subscribe(TOPIC_LORA_UPLINK, qos=1)
+        else:
+            print("[mqtt] LORA_APPLICATION_ID / LORA_DEV_EUI not set, not subscribing to LoRa uplinks")
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties):
         self.connected = False
         print(f"[mqtt] {config.MQTT_HOST} disconnected: {reason_code}")
 
     def _on_message(self, client, userdata, msg):
+        if self.lora_enabled and msg.topic == TOPIC_LORA_UPLINK:
+            try:
+                self.on_uplink(parse_chirpstack_uplink(msg.payload))
+            except (ValueError, KeyError, TypeError) as e:
+                print(f"[mqtt] bad LoRa uplink: {e}")
+            return
         text = msg.payload.decode(errors="replace")
         with self._lock:
             self.messages[msg.topic] = {"payload": text, "retain": msg.retain, "received_at": time.time()}
@@ -103,45 +116,3 @@ class MainBroker:
         with self._lock:
             return sorted(self.messages)
 
-
-class LoraBroker:
-    """ChirpStack MQTT integration: subscribes to the LoRa node uplinks."""
-
-    def __init__(self, on_uplink):
-        self.on_uplink = on_uplink
-        self.connected = False
-        self.enabled = bool(config.LORA_APPLICATION_ID and config.LORA_DEV_EUI)
-        self.topic_up = f"application/{config.LORA_APPLICATION_ID}/device/{config.LORA_DEV_EUI}/event/up"
-        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-        if config.LORA_MQTT_USER:
-            self.client.username_pw_set(config.LORA_MQTT_USER, config.LORA_MQTT_PASS)
-        self.client.on_connect = self._on_connect
-        self.client.on_disconnect = self._on_disconnect
-        self.client.on_message = self._on_message
-
-    def start(self):
-        if not self.enabled:
-            print("[lora] LORA_APPLICATION_ID / LORA_DEV_EUI not set, LoRa bridge disabled")
-            return
-        self.client.connect_async(config.LORA_MQTT_HOST, config.LORA_MQTT_PORT)
-        self.client.loop_start()
-
-    def stop(self):
-        if self.enabled:
-            self.client.loop_stop()
-            self.client.disconnect()
-
-    def _on_connect(self, client, userdata, flags, reason_code, properties):
-        self.connected = not reason_code.is_failure
-        print(f"[lora] {config.LORA_MQTT_HOST} connected: {reason_code}")
-        client.subscribe(self.topic_up, qos=1)
-
-    def _on_disconnect(self, client, userdata, flags, reason_code, properties):
-        self.connected = False
-        print(f"[lora] {config.LORA_MQTT_HOST} disconnected: {reason_code}")
-
-    def _on_message(self, client, userdata, msg):
-        try:
-            self.on_uplink(parse_chirpstack_uplink(msg.payload))
-        except (ValueError, KeyError, TypeError) as e:
-            print(f"[lora] bad uplink: {e}")
