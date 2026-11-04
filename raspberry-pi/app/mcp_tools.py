@@ -29,7 +29,8 @@ def create_mcp(service: IoTService) -> MCPServer:
     def read_lora_node() -> dict:
         """Read the latest uplink from the LoRa node (Arduino UNO R4 + light sensor).
         light_raw is the raw analogRead (0-1023) of the MH light sensor, light_digital is its
-        threshold output (0/1), received_at is a unix timestamp, rssi/snr are the radio signal.
+        threshold output (0/1), light_lux is an uncalibrated lux estimate from light_raw
+        (report it as approximate, e.g. "~120 lux"), received_at is a unix timestamp, rssi/snr are the radio signal.
         The node only sends every ~60 s, so this is the last received value, not a live read."""
         return service.status()["lora"]
 

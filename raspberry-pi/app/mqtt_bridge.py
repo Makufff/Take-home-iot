@@ -34,6 +34,14 @@ def decode_lora_payload(data_b64):
     }
 
 
+def raw_to_lux(light_raw):
+    """Estimated lux from the 10-bit analogRead (see LDR_* in config.py), None if out of range."""
+    if not 0 < light_raw < 1023:
+        return None
+    r_ldr = config.LDR_FIXED_OHMS * light_raw / (1023 - light_raw)
+    return round(10 * (config.LDR_R10_OHMS / r_ldr) ** (1 / config.LDR_GAMMA), 1)
+
+
 def parse_chirpstack_uplink(payload):
     """Supports both ChirpStack v4 (deviceInfo/snr) and v3 (devEUI/loRaSNR) JSON."""
     msg = json.loads(payload)
@@ -41,6 +49,8 @@ def parse_chirpstack_uplink(payload):
     data = decode_lora_payload(msg.get("data"))
     if "light_raw" not in data and msg.get("object"):
         data = msg["object"]
+    if "light_raw" in data:
+        data["light_lux"] = raw_to_lux(data["light_raw"])
     rx = (msg.get("rxInfo") or [{}])[0]
     dev_eui = msg.get("deviceInfo", {}).get("devEui") or msg.get("devEUI")
     return {

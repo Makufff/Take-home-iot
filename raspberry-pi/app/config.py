@@ -37,3 +37,10 @@ TOPIC_PREFIX = os.getenv("TOPIC_PREFIX", "67070067").strip("/")
 # ChirpStack: uplink topic application/{LORA_APPLICATION_ID}/device/{LORA_DEV_EUI}/event/up
 LORA_APPLICATION_ID = os.getenv("LORA_APPLICATION_ID", "")
 LORA_DEV_EUI = os.getenv("LORA_DEV_EUI", "").lower()
+
+# Rough raw -> lux for the MH light module (LDR to GND, fixed resistor to VCC, so
+# a higher raw value means darker). Uncalibrated estimate: GL5528-type LDR is
+# ~10-20 kOhm at 10 lux with gamma ~0.7. Tune these against a lux meter.
+LDR_FIXED_OHMS = float(os.getenv("LDR_FIXED_OHMS", "10000"))
+LDR_R10_OHMS = float(os.getenv("LDR_R10_OHMS", "15000"))
+LDR_GAMMA = float(os.getenv("LDR_GAMMA", "0.7"))
