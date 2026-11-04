@@ -1,4 +1,4 @@
-"""MQTT clients: HiveMQ (main broker) and ChirpStack (lora.kmitl.ac.th)."""
+"""MQTT clients: HiveMQ (main broker) and ChirpStack uplinks (lora.kmitl.ac.th)."""
 import base64
 import json
 import threading
@@ -20,18 +20,16 @@ TOPIC_LED = topic("pi/device/led")
 TOPIC_LED_SET = topic("pi/device/led/set")
 TOPIC_STATUS = topic("pi/status")
 TOPIC_LORA_DATA = topic("lora/node1/data")
-TOPIC_LORA_LED_SET = topic("lora/node1/led/set")
 
 
 def decode_lora_payload(data_b64):
     """Fallback decoder when ChirpStack has no codec (see arduino-lora/chirpstack-codec.js)."""
     raw = base64.b64decode(data_b64 or "")
-    if len(raw) < 4:
+    if len(raw) < 3:
         return {"raw_hex": raw.hex()}
     return {
         "light_raw": (raw[0] << 8) | raw[1],
         "light_digital": raw[2],
-        "led": raw[3] == 1,
     }
 
 
@@ -88,7 +86,7 @@ class MainBroker:
         text = msg.payload.decode(errors="replace")
         with self._lock:
             self.messages[msg.topic] = {"payload": text, "retain": msg.retain, "received_at": time.time()}
-        if msg.topic in (TOPIC_LED_SET, TOPIC_LORA_LED_SET):
+        if msg.topic == TOPIC_LED_SET:
             self.on_command(msg.topic, text)
 
     def publish(self, topic_name, payload, retain=False):
@@ -107,15 +105,13 @@ class MainBroker:
 
 
 class LoraBroker:
-    """ChirpStack MQTT integration: uplink subscribe + downlink publish."""
+    """ChirpStack MQTT integration: subscribes to the LoRa node uplinks."""
 
     def __init__(self, on_uplink):
         self.on_uplink = on_uplink
         self.connected = False
         self.enabled = bool(config.LORA_APPLICATION_ID and config.LORA_DEV_EUI)
-        base = f"application/{config.LORA_APPLICATION_ID}/device/{config.LORA_DEV_EUI}"
-        self.topic_up = f"{base}/event/up"
-        self.topic_down = f"{base}/command/down"
+        self.topic_up = f"application/{config.LORA_APPLICATION_ID}/device/{config.LORA_DEV_EUI}/event/up"
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         if config.LORA_MQTT_USER:
             self.client.username_pw_set(config.LORA_MQTT_USER, config.LORA_MQTT_PASS)
@@ -149,15 +145,3 @@ class LoraBroker:
             self.on_uplink(parse_chirpstack_uplink(msg.payload))
         except (ValueError, KeyError, TypeError) as e:
             print(f"[lora] bad uplink: {e}")
-
-    def send_downlink(self, data: bytes):
-        if not self.enabled:
-            raise RuntimeError("LoRa bridge is not configured (LORA_APPLICATION_ID / LORA_DEV_EUI)")
-        payload = {
-            "devEui": config.LORA_DEV_EUI,
-            "confirmed": False,
-            "fPort": config.LORA_FPORT,
-            "data": base64.b64encode(data).decode(),
-        }
-        info = self.client.publish(self.topic_down, json.dumps(payload), qos=1)
-        return info.rc == mqtt.MQTT_ERR_SUCCESS

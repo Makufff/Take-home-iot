@@ -11,7 +11,6 @@ from .mqtt_bridge import (
     TOPIC_LED,
     TOPIC_LED_SET,
     TOPIC_LORA_DATA,
-    TOPIC_LORA_LED_SET,
     TOPIC_TEMPERATURE,
     LoraBroker,
     MainBroker,
@@ -32,7 +31,6 @@ class IoTService:
         self.history = deque(maxlen=HISTORY_SIZE)
         self.pi = {"temperature": None, "humidity": None, "distance": None, "updated_at": None}
         self.lora_node = None
-        self.lora_led_requested = None
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._sample_loop, daemon=True)
 
@@ -75,19 +73,11 @@ class IoTService:
         self.lora_node = data
         self.mqtt.publish(TOPIC_LORA_DATA, data, retain=True)
 
-    def set_lora_led(self, on):
-        """Queue a downlink. Class A: delivered after the node's next uplink."""
-        self.lora.send_downlink(bytes([1 if on else 0]))
-        self.lora_led_requested = bool(on)
-        return self.lora_led_requested
-
     # MQTT commands from other clients
     def _on_mqtt_command(self, topic_name, payload):
         try:
             if topic_name == TOPIC_LED_SET:
                 self.set_pi_led(_parse_on(payload))
-            elif topic_name == TOPIC_LORA_LED_SET:
-                self.set_lora_led(_parse_on(payload))
         except Exception as e:
             print(f"[service] command {topic_name} failed: {e}")
 
@@ -96,7 +86,6 @@ class IoTService:
             "pi": {**self.pi, "led": self.devices.led},
             "lora": {
                 "node": self.lora_node,
-                "led_requested": self.lora_led_requested,
                 "enabled": self.lora.enabled,
                 "connected": self.lora.connected,
             },
