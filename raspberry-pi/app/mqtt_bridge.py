@@ -24,7 +24,7 @@ TOPIC_LORA_UPLINK = f"application/{config.LORA_APPLICATION_ID}/device/{config.LO
 
 
 def decode_lora_payload(data_b64):
-    """Fallback decoder when ChirpStack has no codec (see arduino-lora/chirpstack-codec.js)."""
+    """Decodes the raw uplink: [light_raw_hi, light_raw_lo, light_digital]."""
     raw = base64.b64decode(data_b64 or "")
     if len(raw) < 3:
         return {"raw_hex": raw.hex()}
@@ -37,7 +37,10 @@ def decode_lora_payload(data_b64):
 def parse_chirpstack_uplink(payload):
     """Supports both ChirpStack v4 (deviceInfo/snr) and v3 (devEUI/loRaSNR) JSON."""
     msg = json.loads(payload)
-    data = msg.get("object") or decode_lora_payload(msg.get("data"))
+    # Decode the raw bytes ourselves so a mismatched ChirpStack codec can't hide light_raw.
+    data = decode_lora_payload(msg.get("data"))
+    if "light_raw" not in data and msg.get("object"):
+        data = msg["object"]
     rx = (msg.get("rxInfo") or [{}])[0]
     dev_eui = msg.get("deviceInfo", {}).get("devEui") or msg.get("devEUI")
     return {
