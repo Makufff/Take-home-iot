@@ -6,18 +6,38 @@
   <title>IoT Dashboard</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.16.1/mqtt.min.js"></script>
 </head>
 <body>
   <header>
     <h1>IoT Dashboard</h1>
     <div class="conn">
-      <span id="conn-api" class="dot"></span> API
       <span id="conn-mqtt" class="dot"></span> MQTT
+      <span id="conn-pi" class="dot"></span> Pi
       <span id="conn-lora" class="dot"></span> LoRa
     </div>
   </header>
 
   <main>
+    <details class="card settings" id="settings">
+      <summary>MQTT settings</summary>
+      <form id="settings-form">
+        <label>Broker (WebSocket)
+          <input name="broker" required>
+        </label>
+        <label>Topic prefix (same as TOPIC_PREFIX on the Pi)
+          <input name="prefix">
+        </label>
+        <label>ChirpStack application_id
+          <input name="appId" placeholder="UUID from ChirpStack">
+        </label>
+        <label>Device EUI
+          <input name="devEui">
+        </label>
+        <button type="submit">Save &amp; reconnect</button>
+      </form>
+    </details>
+
     <section class="cards">
       <div class="card">
         <div class="label">Temperature</div>
@@ -43,23 +63,24 @@
 
     <section class="cards">
       <div class="card wide">
-        <div class="label">LoRa node1 · Light (LDR)</div>
+        <div class="label">LoRa node · Light (LDR)</div>
         <div class="value"><span id="light-raw">--</span> <small>raw (0-1023)</small></div>
         <div class="meta">
           digital: <span id="light-digital">--</span> ·
           RSSI: <span id="rssi">--</span> dBm ·
           SNR: <span id="snr">--</span> dB ·
+          fCnt: <span id="fcnt">--</span> ·
           last uplink: <span id="lora-time">--</span>
         </div>
       </div>
     </section>
 
     <section class="card chart">
-      <div class="label">Live data (last 15 min)</div>
+      <div class="label">Live data</div>
       <canvas id="chart"></canvas>
     </section>
 
-    <p class="footer">Pi updated: <span id="pi-time">--</span> <span id="simulate"></span></p>
+    <p class="footer">Pi last update: <span id="pi-time">--</span></p>
   </main>
 
   <script src="app.js"></script>
